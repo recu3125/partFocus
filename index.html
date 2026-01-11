@@ -1,0 +1,1439 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MIDI 성부 포커스 MP3 ZIP</title>
+  <style>
+    :root { color-scheme: light; }
+    @font-face {
+      font-family: 'KccChaSaem';
+      src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2302@1.0/KCCChassam.woff2') format('woff2');
+      font-weight: normal;
+      font-display: swap;
+    }
+    body { font-family: 'KccChaSaem', system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif; margin: 16px; }
+    .app {
+      max-width: 960px;
+      margin: 0 auto;
+      width: 100%;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .app.file-only .mainOnly { display: none; }
+    .app.file-only .fileRow {
+      justify-content: center;
+    }
+    .app.file-only .fileRow button { display: none; }
+    .app:not(.file-only) .fileIntro { margin-top: 12px; }
+    .fileIntro { text-align: center; margin: 0 0 16px; }
+    .fileTitle {
+      font-size: 38px;
+      letter-spacing: 0.5px;
+      margin: 0 0 6px;
+    }
+    .fileSubtitle {
+      font-size: 16px;
+      margin: 0;
+      color: #444;
+    }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+    .spacer { height: 10px; }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid #d0d0d0; background: #fff; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .primary { border-color: #222; }
+    #midiFile {
+      font-size: 15px;
+      padding: 10px 12px;
+      border: 1px solid #cfcfcf;
+      border-radius: 12px;
+      background: #fff;
+      cursor: pointer;
+    }
+    #midiFile::file-selector-button {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #222;
+      background: #111;
+      color: #fff;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    .toggleGroup { display: inline-flex; border: 1px solid #d0d0d0; border-radius: 12px; overflow: hidden; }
+    .toggleGroup button { border: 0; border-right: 1px solid #d0d0d0; border-radius: 0; padding: 10px 12px; }
+    .toggleGroup button:last-child { border-right: 0; }
+    .toggleGroup button.active { background: #111; color: #fff; }
+    .label { font-size: 13px; color: #222; }
+    input[type="range"] { width: 220px; }
+
+    .partsWrap { border: 1px solid #e2e2e2; border-radius: 14px; padding: 10px; width: 100%; }
+    .partsStrip {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      overflow-x: auto;
+      padding: 6px 2px;
+    }
+    .partsStrip.loading {
+      justify-content: center;
+      font-size: 20px;
+    }
+    .partBtn {
+      width: 46px;
+      height: 120px;
+      border-radius: 12px;
+      border: 1px solid #d9d9d9;
+      background: #fff;
+      position: relative;
+      flex: 0 0 auto;
+    }
+    .partBtn.active { background: #111; color: #fff; border-color: #111; }
+    .partBtn > span {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) rotate(-90deg);
+      white-space: nowrap;
+      font-size: 13px;
+      user-select: none;
+    }
+
+    .status { font-size: 13px; color: #111; min-height: 18px; }
+    .progressBox { border: 1px solid #e2e2e2; border-radius: 14px; padding: 10px; width: 100%; }
+    progress { width: 100%; height: 16px; }
+    .progressHidden { display: none; }
+    .progressActions { display: flex; justify-content: flex-end; margin-top: 8px; }
+    @media (max-width: 640px) {
+      body { margin: 12px; }
+      .app { min-height: 100dvh; }
+      .row { width: 100%; }
+      .fileTitle { font-size: 30px; }
+      .fileSubtitle { font-size: 14px; }
+      #midiFile { width: 100%; }
+      input[type="range"] { width: 100%; }
+      .partsWrap, .progressBox { width: 100%; }
+    }
+    @supports not (height: 100dvh) {
+      .app { min-height: 100vh; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app file-only" id="app">
+    <div class="fileIntro">
+      <h1 class="fileTitle">PartFocus</h1>
+      <p class="fileSubtitle">midi에서 성부별 mp3를 추출합니다.</p>
+    </div>
+    <div class="row fileRow">
+      <input id="midiFile" type="file" accept=".mid,.midi" />
+      <button id="previewBtn" class="primary" disabled>미리듣기</button>
+      <button id="exportBtn" disabled>MP3 ZIP 만들기</button>
+    </div>
+
+    <div class="mainOnly">
+      <div class="spacer"></div>
+
+      <div class="row">
+        <div class="label">볼륨 조정 (나머지 성부)</div>
+        <input id="otherVol" type="range" min="0" max="1" step="0.01" value="0.50" />
+        <div id="otherVolTxt" class="label">0.50</div>
+
+        <div style="width:14px;"></div>
+
+        <div class="label">옥타브</div>
+        <div class="toggleGroup" id="octToggle">
+          <button data-oct="-1">-1</button>
+          <button data-oct="0" class="active">0</button>
+          <button data-oct="1">+1</button>
+        </div>
+
+        <div style="width:14px;"></div>
+
+        <label class="label" style="display:flex;align-items:center;gap:6px;">
+          <input id="uniformVel" type="checkbox" checked />
+          벨로시티 통일
+        </label>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="partsWrap">
+        <div class="partsStrip" id="partsStrip"></div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div id="progressBox" class="progressBox progressHidden">
+        <div id="status" class="status"></div>
+        <progress id="progressBar" max="1" value="0"></progress>
+        <div class="progressActions">
+          <button id="cancelBtn" type="button">취소</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- js-synthesizer (FluidSynth WASM) -->
+  <script src="assets/vendor/libfluidsynth-2.4.6-with-libsndfile.js"></script>
+  <script src="assets/vendor/js-synthesizer.min.js"></script>
+
+  <script>
+    // ====== 설정 ======
+    const DEFAULT_SF_URL = "assets/FluidR3Mono_GM.sf3";
+    const UNIFORM_VELOCITY = 100;
+    const EXPORT_SAMPLE_RATE = 32000;
+    const EXPORT_MP3_KBPS = 128;
+    const RELEASE_TAIL_SEC = 2.0;
+
+    const PREVIEW_BUFFER_FRAMES = 2048;
+    const RENDER_CHUNK_FRAMES = 8192;
+
+    // ====== UI ======
+    const $ = (id) => document.getElementById(id);
+    const appEl = $("app");
+    const midiFileEl = $("midiFile");
+    const previewBtn = $("previewBtn");
+    const exportBtn = $("exportBtn");
+    const partsStrip = $("partsStrip");
+    const otherVolEl = $("otherVol");
+    const otherVolTxt = $("otherVolTxt");
+    const octToggle = $("octToggle");
+    const uniformVelEl = $("uniformVel");
+    const statusEl = $("status");
+    const progressBar = $("progressBar");
+    const progressBox = $("progressBox");
+    const cancelBtn = $("cancelBtn");
+
+    function ts() {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    function log(msg) {
+      console.log(`[${ts()}] ${msg}`);
+    }
+    function setStatus(msg) { statusEl.textContent = msg || ""; }
+    function setProgress(v) { progressBar.value = Math.max(0, Math.min(1, v)); }
+    function setMainVisible(v) { appEl.classList.toggle("file-only", !v); }
+    function setProgressVisible(v) { progressBox.classList.toggle("progressHidden", !v); }
+    function setProgressBarVisible(v) { progressBar.classList.toggle("progressHidden", !v); }
+    function setCancelEnabled(v) { cancelBtn.disabled = !v; }
+
+    // ====== 상태 ======
+    let soundfontBuf = null; // ArrayBuffer
+    let soundfontPromise = null;
+
+    let parts = []; // {name, channel, isDrum, events:[...], init:[...]}
+    let selectedPart = 0;
+    let octaveShift = 0;
+    let otherVolume = parseFloat(otherVolEl.value);
+    let uniformVelocity = !!uniformVelEl.checked;
+
+    // preview synth
+    let audioCtx = null;
+    let previewSynth = null;
+    let previewNode = null;
+    let previewPlaying = false;
+    let previewScheduler = null;
+
+    // export worker
+    let worker = null;
+
+    // ====== SoundFont 로드 ======
+    async function ensureSoundfontLoaded() {
+      if (soundfontBuf) return soundfontBuf;
+      if (soundfontPromise) return soundfontPromise;
+
+      soundfontPromise = (async () => {
+        setStatus("사운드폰트 로딩...");
+        log(`사운드폰트 다운로드 시작`);
+        const res = await fetch(DEFAULT_SF_URL);
+        if (!res.ok) throw new Error(`SoundFont fetch failed: ${res.status}`);
+        const buf = await res.arrayBuffer();
+        soundfontBuf = buf;
+        log(`사운드폰트 다운로드 완료 (${Math.round(buf.byteLength/1024/1024)} MB)`);
+        setStatus("");
+        return buf;
+      })().catch((e) => {
+        setStatus("");
+        log(`사운드폰트 로드 실패: ${e.message || e}`);
+        throw e;
+      });
+
+      return soundfontPromise;
+    }
+
+    // ====== MIDI 파서 ======
+    function readU8(dv, o) { return dv.getUint8(o); }
+    function readU16(dv, o) { return dv.getUint16(o); }
+    function readU32(dv, o) { return dv.getUint32(o); }
+
+    function readStr(dv, o, n) {
+      let s = "";
+      for (let i = 0; i < n; i++) s += String.fromCharCode(dv.getUint8(o+i));
+      return s;
+    }
+
+    function readVLQ(u8, o) {
+      let v = 0;
+      let i = 0;
+      while (true) {
+        const b = u8[o+i];
+        v = (v << 7) | (b & 0x7f);
+        i++;
+        if ((b & 0x80) === 0) break;
+        if (i > 4) throw new Error("VLQ too long");
+      }
+      return { value: v, length: i };
+    }
+
+    function parseSMF(arrayBuffer) {
+      const dv = new DataView(arrayBuffer);
+      let o = 0;
+
+      if (readStr(dv, o, 4) !== "MThd") throw new Error("Not a MIDI file");
+      o += 4;
+      const hdrLen = readU32(dv, o); o += 4;
+      const format = readU16(dv, o); o += 2;
+      const nTracks = readU16(dv, o); o += 2;
+      const division = readU16(dv, o); o += 2;
+      o += (hdrLen - 6);
+
+      if ((division & 0x8000) !== 0) throw new Error("SMPTE time division not supported");
+      const tpq = division;
+
+      const u8 = new Uint8Array(arrayBuffer);
+      const tracks = [];
+      for (let t = 0; t < nTracks; t++) {
+        if (readStr(dv, o, 4) !== "MTrk") throw new Error("Bad track header");
+        o += 4;
+        const len = readU32(dv, o); o += 4;
+        const start = o;
+        const end = o + len;
+        o = end;
+
+        // parse events
+        let tick = 0;
+        let pos = start;
+        let running = 0;
+        const events = [];
+        let trackName = "";
+
+        while (pos < end) {
+          const dl = readVLQ(u8, pos); pos += dl.length;
+          tick += dl.value;
+
+          let status = u8[pos++];
+          if (status < 0x80) { // running status
+            pos--;
+            status = running;
+          } else {
+            running = status;
+          }
+
+          if (status === 0xFF) {
+            const metaType = u8[pos++];
+            const ml = readVLQ(u8, pos); pos += ml.length;
+            const dataStart = pos;
+            const dataEnd = pos + ml.value;
+            const data = u8.slice(dataStart, dataEnd);
+            pos = dataEnd;
+
+            if (metaType === 0x03) {
+              trackName = new TextDecoder().decode(data);
+            } else if (metaType === 0x51 && data.length === 3) {
+              const usPerQN = (data[0] << 16) | (data[1] << 8) | data[2];
+              events.push({ tick, kind: "tempo", usPerQN });
+            } else if (metaType === 0x2F) {
+              // end of track
+            }
+          } else if (status === 0xF0 || status === 0xF7) {
+            const sl = readVLQ(u8, pos); pos += sl.length + sl.value;
+          } else {
+            const type = status & 0xF0;
+            const ch = status & 0x0F;
+
+            if (type === 0xC0 || type === 0xD0) {
+              const d1 = u8[pos++];
+              events.push({ tick, kind: (type === 0xC0 ? "pc" : "cp"), ch, d1 });
+            } else {
+              const d1 = u8[pos++], d2 = u8[pos++];
+              if (type === 0x80) events.push({ tick, kind: "off", ch, note: d1, vel: d2 });
+              else if (type === 0x90) events.push({ tick, kind: "on", ch, note: d1, vel: d2 });
+              else if (type === 0xB0) events.push({ tick, kind: "cc", ch, cc: d1, val: d2 });
+              else if (type === 0xE0) events.push({ tick, kind: "pb", ch, lsb: d1, msb: d2 });
+              else if (type === 0xA0) events.push({ tick, kind: "at", ch, d1, d2 });
+              else if (type === 0xF0) { /* ignore */ }
+            }
+          }
+        }
+
+        tracks.push({ trackName, events });
+      }
+
+      return { format, tpq, tracks };
+    }
+
+    function buildTempoMap(tpq, tracks) {
+      const tempos = [];
+      for (const tr of tracks) {
+        for (const ev of tr.events) {
+          if (ev.kind === "tempo") tempos.push({ tick: ev.tick, usPerQN: ev.usPerQN });
+        }
+      }
+      tempos.sort((a,b) => a.tick - b.tick);
+      if (tempos.length === 0 || tempos[0].tick !== 0) tempos.unshift({ tick: 0, usPerQN: 500000 });
+
+      // segment precompute
+      const segs = [];
+      let curSec = 0;
+      for (let i = 0; i < tempos.length; i++) {
+        const cur = tempos[i];
+        const next = tempos[i+1];
+        segs.push({ tickStart: cur.tick, secStart: curSec, usPerQN: cur.usPerQN });
+        if (next) {
+          const dtick = next.tick - cur.tick;
+          const dsec = (dtick * cur.usPerQN) / (tpq * 1e6);
+          curSec += dsec;
+        }
+      }
+      function tickToSec(tick) {
+        // find last segment with tickStart <= tick
+        let lo = 0, hi = segs.length - 1, idx = 0;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (segs[mid].tickStart <= tick) { idx = mid; lo = mid + 1; }
+          else hi = mid - 1;
+        }
+        const s = segs[idx];
+        return s.secStart + ((tick - s.tickStart) * s.usPerQN) / (tpq * 1e6);
+      }
+      return { tickToSec };
+    }
+
+    function buildPartsFromSMF(smf) {
+      const { tpq, tracks, format } = smf;
+      const { tickToSec } = buildTempoMap(tpq, tracks);
+
+      // note track detection
+      const trackHasNotes = tracks.map((tr) =>
+        tr.events.some((e) => e.kind === "on" && e.vel > 0)
+      );
+
+      let candidates = [];
+      if (format === 0) {
+        // format 0: split by channel among note events
+        const chSet = new Set();
+        for (const tr of tracks) {
+          for (const e of tr.events) {
+            if (e.kind === "on" && e.vel > 0) chSet.add(e.ch);
+          }
+        }
+        const chans = [...chSet].sort((a,b)=>a-b);
+        candidates = chans.map((ch) => ({ mode: "channel", ch }));
+      } else {
+        // format 1+: use note tracks
+        candidates = trackHasNotes
+          .map((has, i) => ({ has, i }))
+          .filter(x => x.has)
+          .map(x => ({ mode: "track", trackIndex: x.i }));
+      }
+
+      // channel assignment (internal)
+      const used = new Set();
+      function allocChannel() {
+        for (let c = 0; c < 16; c++) {
+          if (!used.has(c)) { used.add(c); return c; }
+        }
+        return -1;
+      }
+
+      const partsLocal = [];
+      let samplerN = 1;
+
+      for (const cand of candidates) {
+        const ch = allocChannel();
+        if (ch < 0) break;
+
+        let name = "";
+        let srcEvents = [];
+        let isDrum = false;
+
+        if (cand.mode === "track") {
+          const tr = tracks[cand.trackIndex];
+          name = (tr.trackName || "").trim();
+          if (!name) name = `Sampler ${samplerN++}`;
+          srcEvents = tr.events;
+          // drum detection: if any note on original channel 9
+          isDrum = srcEvents.some((e) => (e.kind === "on" || e.kind === "off") && e.ch === 9);
+        } else {
+          name = `Ch ${cand.ch + 1}`;
+          // gather all track events for that channel
+          for (const tr of tracks) {
+            for (const e of tr.events) {
+              if (e.ch === cand.ch) srcEvents.push(e);
+            }
+          }
+          isDrum = (cand.ch === 9);
+        }
+
+        // build part events: strip CC7/CC11 to allow our mix control
+        const events = [];
+        for (const e of srcEvents) {
+          if (e.kind === "tempo") continue;
+          const tSec = tickToSec(e.tick);
+
+          if (e.kind === "on") {
+            if (e.vel === 0) events.push({ tSec, kind: "off", ch, note: e.note });
+            else events.push({ tSec, kind: "on", ch, note: e.note, vel: e.vel });
+          } else if (e.kind === "off") {
+            events.push({ tSec, kind: "off", ch, note: e.note });
+          } else if (e.kind === "pc") {
+            events.push({ tSec, kind: "pc", ch, prog: e.d1 });
+          } else if (e.kind === "cc") {
+            if (e.cc === 7 || e.cc === 11) continue;
+            events.push({ tSec, kind: "cc", ch, cc: e.cc, val: e.val });
+          } else if (e.kind === "pb") {
+            const v = (e.msb << 7) | e.lsb; // 0..16383
+            events.push({ tSec, kind: "pb", ch, value: v });
+          }
+        }
+
+        events.sort((a,b) => (a.tSec - b.tSec) || priority(a) - priority(b));
+
+        partsLocal.push({
+          name,
+          channel: ch,
+          isDrum,
+          events
+        });
+      }
+
+      function priority(e) {
+        // same-time ordering: off -> cc/pb/pc -> on
+        if (e.kind === "off") return 0;
+        if (e.kind === "cc" || e.kind === "pb" || e.kind === "pc") return 1;
+        if (e.kind === "on") return 2;
+        return 3;
+      }
+
+      // compute duration
+      let last = 0;
+      for (const p of partsLocal) for (const e of p.events) last = Math.max(last, e.tSec);
+      const durationSec = last + RELEASE_TAIL_SEC;
+
+      return { parts: partsLocal, durationSec };
+    }
+
+    // ====== UI: 성부 스트립 ======
+    function renderPartsUI() {
+      partsStrip.innerHTML = "";
+      parts.forEach((p, idx) => {
+        const b = document.createElement("button");
+        b.className = "partBtn" + (idx === selectedPart ? " active" : "");
+        b.type = "button";
+        b.dataset.idx = String(idx);
+
+        const s = document.createElement("span");
+        s.textContent = p.name;
+
+        b.appendChild(s);
+        b.addEventListener("click", () => {
+          selectPart(idx);
+        });
+
+        partsStrip.appendChild(b);
+      });
+    }
+
+    function selectPart(idx) {
+      selectedPart = idx;
+      for (const btn of partsStrip.querySelectorAll(".partBtn")) {
+        btn.classList.toggle("active", Number(btn.dataset.idx) === selectedPart);
+      }
+      if (previewPlaying && previewSynth) {
+        applyMixVolumes(previewSynth);
+      }
+    }
+
+    // ====== 옥타브 토글 ======
+    octToggle.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const v = Number(btn.dataset.oct);
+      octaveShift = v;
+      for (const b of octToggle.querySelectorAll("button")) b.classList.toggle("active", Number(b.dataset.oct) === v);
+      log(`옥타브: ${v}`);
+    });
+
+    // ====== 볼륨 ======
+    otherVolEl.addEventListener("input", () => {
+      otherVolume = parseFloat(otherVolEl.value);
+      otherVolTxt.textContent = otherVolume.toFixed(2);
+      if (previewPlaying && previewSynth) applyMixVolumes(previewSynth);
+    });
+
+    // ====== 벨로시티 통일 ======
+    uniformVelEl.addEventListener("change", () => {
+      uniformVelocity = !!uniformVelEl.checked;
+      log(`벨로시티 통일: ${uniformVelocity ? "ON" : "OFF"}`);
+    });
+
+    // ====== Preview: 스케줄러 ======
+    class MidiScheduler {
+      constructor({ parts, synth, sampleRate }) {
+        this.parts = parts;
+        this.synth = synth;
+        this.sampleRate = sampleRate;
+        this.events = [];
+        this.idx = 0;
+        this.frame = 0;
+
+        // merge all events with part info
+        for (let pi = 0; pi < parts.length; pi++) {
+          for (const ev of parts[pi].events) {
+            this.events.push({ ...ev, partIndex: pi, frame: Math.max(0, Math.round(ev.tSec * sampleRate)) });
+          }
+        }
+        this.events.sort((a,b) => a.frame - b.frame || this._prio(a) - this._prio(b));
+      }
+
+      _prio(e) {
+        if (e.kind === "off") return 0;
+        if (e.kind === "cc" || e.kind === "pb" || e.kind === "pc") return 1;
+        if (e.kind === "on") return 2;
+        return 3;
+      }
+
+      reset() { this.idx = 0; this.frame = 0; }
+
+      dispatchUntil(targetFrame) {
+        while (this.idx < this.events.length && this.events[this.idx].frame <= targetFrame) {
+          const e = this.events[this.idx++];
+          this._dispatch(e);
+        }
+      }
+
+      _transposeNote(note) {
+        const n = note + octaveShift * 12;
+        return Math.max(0, Math.min(127, n));
+      }
+
+      _dispatch(e) {
+        const s = this.synth;
+        const ch = e.ch;
+        if (e.kind === "on") {
+          const n = this._transposeNote(e.note);
+          const v = uniformVelocity ? UNIFORM_VELOCITY : e.vel;
+          s.midiNoteOn(ch, n, v);
+        } else if (e.kind === "off") {
+          const n = this._transposeNote(e.note);
+          s.midiNoteOff(ch, n);
+        } else if (e.kind === "cc") {
+          s.midiControl(ch, e.cc, e.val);
+        } else if (e.kind === "pc") {
+          s.midiProgramChange(ch, e.prog);
+        } else if (e.kind === "pb") {
+          s.midiPitchBend(ch, e.value);
+        }
+      }
+
+      renderBlock(outL, outR) {
+        const frames = outL.length;
+        outL.fill(0); outR.fill(0);
+
+        let pos = 0;
+        while (pos < frames) {
+          if (this.idx >= this.events.length) {
+            // no more events: render remaining frames
+            const subL = outL.subarray(pos);
+            const subR = outR.subarray(pos);
+            this.synth.render([subL, subR]);
+            this.frame += (frames - pos);
+            break;
+          }
+
+          const nextEvFrame = this.events[this.idx].frame;
+          if (nextEvFrame <= this.frame) {
+            this.dispatchUntil(this.frame);
+            continue;
+          }
+
+          const until = Math.min(frames - pos, nextEvFrame - this.frame);
+          const subL = outL.subarray(pos, pos + until);
+          const subR = outR.subarray(pos, pos + until);
+          this.synth.render([subL, subR]);
+          pos += until;
+          this.frame += until;
+
+          // dispatch events at boundary
+          this.dispatchUntil(this.frame);
+        }
+      }
+    }
+
+    function applyMixVolumes(synth) {
+      // selected: 1.00 / others: otherVolume (0..1)
+      const other = Math.round(otherVolume * 127);
+      for (let i = 0; i < parts.length; i++) {
+        const ch = parts[i].channel;
+        const v = (i === selectedPart) ? 127 : other;
+        synth.midiControl(ch, 11, v); // Expression
+      }
+    }
+
+    async function initPreviewSynth() {
+      await ensureSoundfontLoaded();
+      await JSSynth.waitForReady();
+
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (!previewSynth) {
+        previewSynth = new JSSynth.Synthesizer();
+        previewSynth.init(audioCtx.sampleRate);
+        previewSynth.setGain(1.0);
+        previewSynth.setReverbOn(false);
+        previewSynth.setChorusOn(false);
+        previewSynth.setInterpolation(1); // Linear
+
+        await previewSynth.loadSFont(soundfontBuf);
+      }
+
+      // channel types
+      for (const p of parts) previewSynth.setChannelType(p.channel, !!p.isDrum);
+
+      // reset + base volumes
+      previewSynth.midiSystemReset();
+      for (const p of parts) {
+        previewSynth.midiControl(p.channel, 7, 127);   // Channel volume
+        previewSynth.midiControl(p.channel, 11, 127);  // Expression
+      }
+    }
+
+    function stopPreview() {
+      if (!previewPlaying) return;
+      previewPlaying = false;
+      previewBtn.textContent = "미리듣기";
+
+      try {
+        if (previewNode) {
+          previewNode.disconnect();
+          previewNode.onaudioprocess = null;
+          previewNode = null;
+        }
+        if (previewSynth) {
+          // all sounds off
+          for (const p of parts) {
+            previewSynth.midiControl(p.channel, 120, 0);
+            previewSynth.midiControl(p.channel, 123, 0);
+          }
+        }
+      } catch {}
+      setStatus("");
+      setProgress(0);
+      setProgressBarVisible(true);
+      log("미리듣기 정지");
+    }
+
+    async function startPreview() {
+      if (!parts.length) return;
+
+      setProgress(0);
+      setProgressBarVisible(true);
+      await initPreviewSynth();
+      await audioCtx.resume();
+
+      // reset synth state
+      previewSynth.midiSystemReset();
+      for (const p of parts) previewSynth.setChannelType(p.channel, !!p.isDrum);
+      for (const p of parts) {
+        previewSynth.midiControl(p.channel, 7, 127);
+        previewSynth.midiControl(p.channel, 11, 127);
+      }
+      applyMixVolumes(previewSynth);
+
+      previewScheduler = new MidiScheduler({ parts, synth: previewSynth, sampleRate: audioCtx.sampleRate });
+      previewScheduler.reset();
+
+      previewNode = audioCtx.createScriptProcessor(PREVIEW_BUFFER_FRAMES, 0, 2);
+      previewNode.onaudioprocess = (e) => {
+        const outL = e.outputBuffer.getChannelData(0);
+        const outR = e.outputBuffer.getChannelData(1);
+        if (!previewPlaying) { outL.fill(0); outR.fill(0); return; }
+        previewScheduler.renderBlock(outL, outR);
+      };
+      previewNode.connect(audioCtx.destination);
+
+      previewPlaying = true;
+      previewBtn.textContent = "정지";
+      log("미리듣기 시작");
+    }
+
+    previewBtn.addEventListener("click", async () => {
+      if (previewPlaying) stopPreview();
+      else {
+        try { await startPreview(); }
+        catch (e) { log(`미리듣기 실패: ${e.message || e}`); stopPreview(); }
+      }
+    });
+
+    // ====== Export Worker ======
+    function makeWorker() {
+      const libFluidUrl = new URL("assets/vendor/libfluidsynth-2.4.6-with-libsndfile.js", location.href).href;
+      const jsSynthUrl = new URL("assets/vendor/js-synthesizer.min.js", location.href).href;
+      const lameUrl = new URL("assets/vendor/lame.min.js", location.href).href;
+      const jszipUrl = new URL("assets/vendor/jszip.min.js", location.href).href;
+      const workerCode = `
+        self.window = self;
+
+        const LIB_FLUID = ${JSON.stringify(libFluidUrl)};
+        const JS_SYNTH  = ${JSON.stringify(jsSynthUrl)};
+        const LAME      = ${JSON.stringify(lameUrl)};
+        const JSZIP     = ${JSON.stringify(jszipUrl)};
+
+        importScripts(LIB_FLUID, JS_SYNTH, LAME, JSZIP);
+
+        function nowMs() { return (self.performance && performance.now) ? performance.now() : Date.now(); }
+
+        class Limiter {
+          constructor(sr, threshold=0.99, attackSec=0.003, releaseSec=0.050) {
+            this.sr = sr;
+            this.threshold = threshold;
+            this.g = 1.0;
+            this.a = Math.exp(-1 / (Math.max(1e-6, attackSec) * sr));
+            this.r = Math.exp(-1 / (Math.max(1e-6, releaseSec) * sr));
+          }
+          processBlock(fL, fR, i16L, i16R) {
+            let g = this.g;
+            const a = this.a, r = this.r, thr = this.threshold;
+            for (let i = 0; i < fL.length; i++) {
+              const l0 = fL[i], r0 = fR[i];
+              const peak = Math.max(Math.abs(l0), Math.abs(r0));
+              let tg = 1.0;
+              if (peak > thr) tg = thr / peak;
+              if (tg < g) g = a * g + (1 - a) * tg;
+              else g = r * g + (1 - r) * tg;
+
+              let l = l0 * g;
+              let rr = r0 * g;
+
+              // int16 convert (hard clip just in case)
+              l = Math.max(-1, Math.min(1, l));
+              rr = Math.max(-1, Math.min(1, rr));
+              i16L[i] = (l < 0 ? (l * 32768) : (l * 32767)) | 0;
+              i16R[i] = (rr < 0 ? (rr * 32768) : (rr * 32767)) | 0;
+            }
+            this.g = g;
+          }
+        }
+
+        function postProgress(obj) { self.postMessage({ type: "progress", ...obj }); }
+
+        function eventPrio(e) {
+          if (e.kind === "off") return 0;
+          if (e.kind === "cc" || e.kind === "pb" || e.kind === "pc") return 1;
+          if (e.kind === "on") return 2;
+          return 3;
+        }
+
+        function transposeNote(note, octaveShift) {
+          const n = note + octaveShift * 12;
+          return Math.max(0, Math.min(127, n));
+        }
+
+        function buildMergedEvents(parts, sr) {
+          const evs = [];
+          for (let pi = 0; pi < parts.length; pi++) {
+            for (const e of parts[pi].events) {
+              evs.push({ ...e, partIndex: pi, frame: Math.max(0, Math.round(e.tSec * sr)) });
+            }
+          }
+          evs.sort((a,b) => a.frame - b.frame || eventPrio(a) - eventPrio(b));
+          return evs;
+        }
+
+        function makeSynth(sr, soundfontBuf, parts) {
+          const synth = new JSSynth.Synthesizer();
+          synth.init(sr);
+          synth.setGain(1.0);
+          synth.setReverbOn(false);
+          synth.setChorusOn(false);
+          synth.setInterpolation(1); // Linear
+          return synth.loadSFont(soundfontBuf).then(() => {
+            synth.midiSystemReset();
+            for (const p of parts) synth.setChannelType(p.channel, !!p.isDrum);
+            for (const p of parts) {
+              synth.midiControl(p.channel, 7, 127);
+              synth.midiControl(p.channel, 11, 127);
+            }
+            return synth;
+          });
+        }
+
+        function dispatchEvent(synth, e, octaveShift, uniformVelocity) {
+          const ch = e.ch;
+          if (e.kind === "on") {
+            const n = transposeNote(e.note, octaveShift);
+            const v = uniformVelocity ? ${UNIFORM_VELOCITY} : e.vel;
+            synth.midiNoteOn(ch, n, v);
+          } else if (e.kind === "off") {
+            const n = transposeNote(e.note, octaveShift);
+            synth.midiNoteOff(ch, n);
+          } else if (e.kind === "cc") {
+            synth.midiControl(ch, e.cc, e.val);
+          } else if (e.kind === "pc") {
+            synth.midiProgramChange(ch, e.prog);
+          } else if (e.kind === "pb") {
+            synth.midiPitchBend(ch, e.value);
+          }
+        }
+
+        // render merged events into full buffers (Float32Array L/R of totalFrames)
+        function renderFullMix({ synth, events, totalFrames, chunkFrames, octaveShift, uniformVelocity }) {
+          const mixL = new Float32Array(totalFrames);
+          const mixR = new Float32Array(totalFrames);
+
+          let idx = 0;
+          let frame = 0;
+
+          const t0 = nowMs();
+          let lastPost = t0;
+
+          while (frame < totalFrames) {
+            const n = Math.min(chunkFrames, totalFrames - frame);
+            const outL = mixL.subarray(frame, frame + n);
+            const outR = mixR.subarray(frame, frame + n);
+            outL.fill(0); outR.fill(0);
+
+            let pos = 0;
+            while (pos < n) {
+              if (idx >= events.length) {
+                const sL = outL.subarray(pos);
+                const sR = outR.subarray(pos);
+                synth.render([sL, sR]);
+                frame += (n - pos);
+                pos = n;
+                break;
+              }
+              const nextEv = events[idx].frame;
+              if (nextEv <= frame) {
+                dispatchEvent(synth, events[idx++], octaveShift);
+                continue;
+              }
+              const until = Math.min(n - pos, nextEv - frame);
+              const sL = outL.subarray(pos, pos + until);
+              const sR = outR.subarray(pos, pos + until);
+              synth.render([sL, sR]);
+              pos += until;
+              frame += until;
+
+              while (idx < events.length && events[idx].frame <= frame) {
+                dispatchEvent(synth, events[idx++], octaveShift);
+              }
+            }
+
+            const t = nowMs();
+            if (t - lastPost > 150) {
+              postProgress({ stage: "fullmix", doneFrames: frame, totalFrames });
+              lastPost = t;
+            }
+          }
+
+          postProgress({ stage: "fullmix", doneFrames: totalFrames, totalFrames });
+          return { mixL, mixR };
+        }
+
+        // render a single part stem + mix with fullMix => mp3 bytes
+        function renderStemToMp3({ synth, stemEvents, mixL, mixR, otherVolume, partIndex, partName, totalFrames, sr, chunkFrames, octaveShift, mp3Kbps, uniformVelocity }) {
+          // emphasize: out = mix*other + stem*(1-other)
+          const ov = otherVolume;
+          const stemGain = 1 - ov;
+
+          // reset
+          synth.midiSystemReset();
+          // channel types/volumes reset by caller before this function (or re-do lightly)
+          // (재설정: 외부에서 이미 했다고 가정)
+
+          // set all channels expression=0, selected=127 so stem render doesn't waste other channels
+          // (stemEvents already only uses one channel, but 안전)
+          // expression values
+          // NOTE: stem render uses just its own channel; keep expression 127
+          // others irrelevant
+
+          let idx = 0;
+          let frame = 0;
+
+          const enc = new lamejs.Mp3Encoder(2, sr, mp3Kbps);
+          const mp3Chunks = [];
+
+          const limiter = new Limiter(sr);
+
+          const fL = new Float32Array(chunkFrames);
+          const fR = new Float32Array(chunkFrames);
+          const i16L = new Int16Array(chunkFrames);
+          const i16R = new Int16Array(chunkFrames);
+
+          const t0 = nowMs();
+          let lastPost = t0;
+
+          function pushMp3(bytes) {
+            if (bytes && bytes.length) mp3Chunks.push(new Uint8Array(bytes));
+          }
+
+          while (frame < totalFrames) {
+            const n = Math.min(chunkFrames, totalFrames - frame);
+            const outL = fL.subarray(0, n);
+            const outR = fR.subarray(0, n);
+            outL.fill(0); outR.fill(0);
+
+            let pos = 0;
+            while (pos < n) {
+              if (idx >= stemEvents.length) {
+                const sL = outL.subarray(pos);
+                const sR = outR.subarray(pos);
+                synth.render([sL, sR]);
+                frame += (n - pos);
+                pos = n;
+                break;
+              }
+              const nextEv = stemEvents[idx].frame;
+              if (nextEv <= frame) {
+                dispatchEvent(synth, stemEvents[idx++], octaveShift, uniformVelocity);
+                continue;
+              }
+              const until = Math.min(n - pos, nextEv - frame);
+              const sL = outL.subarray(pos, pos + until);
+              const sR = outR.subarray(pos, pos + until);
+              synth.render([sL, sR]);
+              pos += until;
+              frame += until;
+
+              while (idx < stemEvents.length && stemEvents[idx].frame <= frame) {
+                dispatchEvent(synth, stemEvents[idx++], octaveShift, uniformVelocity);
+              }
+            }
+
+            // mix + limiter + encode
+            // fullMix chunk range: [frame - n, frame)
+            const baseStart = frame - n;
+            for (let i = 0; i < n; i++) {
+              outL[i] = mixL[baseStart + i] * ov + outL[i] * stemGain;
+              outR[i] = mixR[baseStart + i] * ov + outR[i] * stemGain;
+            }
+            limiter.processBlock(outL, outR, i16L.subarray(0, n), i16R.subarray(0, n));
+
+            // MP3 encode (1152-sample blocks)
+            let off = 0;
+            while (off + 1152 <= n) {
+              const b = enc.encodeBuffer(
+                i16L.subarray(off, off + 1152),
+                i16R.subarray(off, off + 1152)
+              );
+              pushMp3(b);
+              off += 1152;
+            }
+            if (off < n) {
+              const b = enc.encodeBuffer(
+                i16L.subarray(off, n),
+                i16R.subarray(off, n)
+              );
+              pushMp3(b);
+            }
+
+            const t = nowMs();
+            if (t - lastPost > 150) {
+              postProgress({ stage: "part", partIndex, partName, doneFrames: frame, totalFrames });
+              lastPost = t;
+            }
+          }
+
+          pushMp3(enc.flush());
+
+          // concat
+          let total = 0;
+          for (const c of mp3Chunks) total += c.length;
+          const out = new Uint8Array(total);
+          let w = 0;
+          for (const c of mp3Chunks) { out.set(c, w); w += c.length; }
+
+          postProgress({ stage: "part", partIndex, partName, doneFrames: totalFrames, totalFrames });
+
+          return out;
+        }
+
+        // render full mix with per-channel expression (selected vs others) => mp3 bytes
+        function renderMixToMp3({ synth, events, partIndex, partName, totalFrames, sr, chunkFrames, octaveShift, mp3Kbps, uniformVelocity }) {
+          let idx = 0;
+          let frame = 0;
+
+          const enc = new lamejs.Mp3Encoder(2, sr, mp3Kbps);
+          const mp3Chunks = [];
+
+          const limiter = new Limiter(sr);
+
+          const fL = new Float32Array(chunkFrames);
+          const fR = new Float32Array(chunkFrames);
+          const i16L = new Int16Array(chunkFrames);
+          const i16R = new Int16Array(chunkFrames);
+
+          const t0 = nowMs();
+          let lastPost = t0;
+
+          function pushMp3(bytes) {
+            if (bytes && bytes.length) mp3Chunks.push(new Uint8Array(bytes));
+          }
+
+          while (frame < totalFrames) {
+            const n = Math.min(chunkFrames, totalFrames - frame);
+            const outL = fL.subarray(0, n);
+            const outR = fR.subarray(0, n);
+            outL.fill(0); outR.fill(0);
+
+            let pos = 0;
+            while (pos < n) {
+              if (idx >= events.length) {
+                const sL = outL.subarray(pos);
+                const sR = outR.subarray(pos);
+                synth.render([sL, sR]);
+                frame += (n - pos);
+                pos = n;
+                break;
+              }
+              const nextEv = events[idx].frame;
+              if (nextEv <= frame) {
+                dispatchEvent(synth, events[idx++], octaveShift, uniformVelocity);
+                continue;
+              }
+              const until = Math.min(n - pos, nextEv - frame);
+              const sL = outL.subarray(pos, pos + until);
+              const sR = outR.subarray(pos, pos + until);
+              synth.render([sL, sR]);
+              pos += until;
+              frame += until;
+
+              while (idx < events.length && events[idx].frame <= frame) {
+                dispatchEvent(synth, events[idx++], octaveShift, uniformVelocity);
+              }
+            }
+
+            // limiter + encode
+            limiter.processBlock(outL, outR, i16L.subarray(0, n), i16R.subarray(0, n));
+
+            // MP3 encode (1152-sample blocks)
+            let off = 0;
+            while (off + 1152 <= n) {
+              const b = enc.encodeBuffer(
+                i16L.subarray(off, off + 1152),
+                i16R.subarray(off, off + 1152)
+              );
+              pushMp3(b);
+              off += 1152;
+            }
+            if (off < n) {
+              const b = enc.encodeBuffer(
+                i16L.subarray(off, n),
+                i16R.subarray(off, n)
+              );
+              pushMp3(b);
+            }
+
+            const t = nowMs();
+            if (t - lastPost > 150) {
+              postProgress({ stage: "part", partIndex, partName, doneFrames: frame, totalFrames });
+              lastPost = t;
+            }
+          }
+
+          pushMp3(enc.flush());
+
+          // concat
+          let total = 0;
+          for (const c of mp3Chunks) total += c.length;
+          const out = new Uint8Array(total);
+          let w = 0;
+          for (const c of mp3Chunks) { out.set(c, w); w += c.length; }
+
+          postProgress({ stage: "part", partIndex, partName, doneFrames: totalFrames, totalFrames });
+
+          return out;
+        }
+
+        self.onmessage = async (ev) => {
+          const msg = ev.data || {};
+          if (msg.type !== "start") return;
+
+          try {
+            const { parts, durationSec, otherVolume, octaveShift, sampleRate, mp3Kbps, soundfontBuf, zipBaseName, uniformVelocity } = msg;
+
+            await JSSynth.waitForReady();
+            postProgress({ stage: "init" });
+
+            const sr = sampleRate;
+            const totalFrames = Math.ceil(durationSec * sr);
+
+            // precompute merged events (frames)
+            const merged = buildMergedEvents(parts, sr);
+
+            // synth for full mix
+            const synth = await makeSynth(sr, soundfontBuf, parts);
+            for (const p of parts) synth.setChannelType(p.channel, !!p.isDrum);
+
+            // zip
+            const zip = new JSZip();
+
+            const otherExpr = Math.round(Math.max(0, Math.min(1, otherVolume)) * 127);
+            postProgress({ stage: "fullmix", doneFrames: totalFrames, totalFrames });
+
+            // render each part mix -> limiter -> mp3
+            for (let i = 0; i < parts.length; i++) {
+              const partName = parts[i].name || ("Part " + (i+1));
+              postProgress({ stage: "part", partIndex: i, partName, doneFrames: 0, totalFrames });
+
+              // reset synth between renders
+              synth.midiSystemReset();
+              for (const p of parts) synth.setChannelType(p.channel, !!p.isDrum);
+              for (const p of parts) {
+                synth.midiControl(p.channel, 7, 127);
+                synth.midiControl(p.channel, 11, 127);
+              }
+              for (let pi = 0; pi < parts.length; pi++) {
+                const ch = parts[pi].channel;
+                const v = (pi === i) ? 127 : otherExpr;
+                synth.midiControl(ch, 11, v);
+              }
+
+              const mp3Bytes = renderMixToMp3({
+                synth,
+                events: merged,
+                partIndex: i,
+                partName,
+                totalFrames,
+                sr,
+                chunkFrames: ${RENDER_CHUNK_FRAMES},
+                octaveShift,
+                mp3Kbps,
+                uniformVelocity
+              });
+
+              // filename sanitize
+              const safeName = String(partName).replace(/[\\\\/:*?"<>|]/g, "_").trim() || ("Part_" + (i+1));
+              zip.file(safeName + ".mp3", mp3Bytes, { binary: true, compression: "STORE" });
+            }
+
+            postProgress({ stage: "zip", percent: 0 });
+            const zipBytes = await zip.generateAsync(
+              { type: "uint8array", compression: "STORE" },
+              (m) => {
+                // m.percent: 0..100
+                postProgress({ stage: "zip", percent: (m && typeof m.percent === "number") ? m.percent : 0 });
+              }
+            );
+
+            self.postMessage({ type: "done", zipBytes: zipBytes.buffer, zipName: zipBaseName + ".zip" }, [zipBytes.buffer]);
+          } catch (e) {
+            self.postMessage({ type: "error", message: e && e.message ? e.message : String(e) });
+          }
+        };
+      `;
+      const blob = new Blob([workerCode], { type: "application/javascript" });
+      return new Worker(URL.createObjectURL(blob));
+    }
+
+    function downloadBlob(blob, filename) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      }, 1000);
+    }
+
+    async function startExportZip(durationSec) {
+      await ensureSoundfontLoaded();
+
+      if (worker) { worker.terminate(); worker = null; }
+      worker = makeWorker();
+
+      exportBtn.disabled = true;
+      previewBtn.disabled = true;
+      setCancelEnabled(true);
+
+      setProgress(0);
+      setProgressVisible(true);
+      setProgressBarVisible(true);
+      setStatus("내보내기 준비...");
+      log("내보내기 시작");
+
+      const zipBaseName = (midiFileEl.files && midiFileEl.files[0] ? midiFileEl.files[0].name.replace(/\.(mid|midi)$/i, "") : "export");
+
+      worker.onmessage = (ev) => {
+        const msg = ev.data || {};
+        if (msg.type === "progress") {
+          if (msg.stage === "init") {
+            setStatus("초기화...");
+          } else if (msg.stage === "fullmix") {
+            const p = msg.totalFrames ? (msg.doneFrames / msg.totalFrames) : 0;
+            setStatus(`전체 렌더링 ${Math.round(p*100)}%`);
+            setProgress(p * 0.15);
+          } else if (msg.stage === "part") {
+            const p = msg.totalFrames ? (msg.doneFrames / msg.totalFrames) : 0;
+            const n = parts.length || 1;
+            // 15%~95%: parts
+            const base = 0.15 + (msg.partIndex / n) * 0.80;
+            const span = (1 / n) * 0.80;
+            setStatus(`(${msg.partIndex+1}/${n}) ${msg.partName} ${Math.round(p*100)}%`);
+            setProgress(base + span * p);
+          } else if (msg.stage === "zip") {
+            const p = (msg.percent || 0) / 100;
+            setStatus(`ZIP 생성 ${Math.round(p*100)}%`);
+            setProgress(0.95 + 0.05 * p);
+          }
+          return;
+        }
+        if (msg.type === "done") {
+          setStatus("");
+          setProgress(1);
+          log("내보내기 완료");
+          const blob = new Blob([msg.zipBytes], { type: "application/zip" });
+          downloadBlob(blob, msg.zipName || (zipBaseName + ".zip"));
+
+          exportBtn.disabled = false;
+          previewBtn.disabled = false;
+          setCancelEnabled(false);
+          worker.terminate(); worker = null;
+          return;
+        }
+        if (msg.type === "error") {
+          setStatus("");
+          log("내보내기 실패: " + msg.message);
+          exportBtn.disabled = false;
+          previewBtn.disabled = false;
+          setCancelEnabled(false);
+          worker.terminate(); worker = null;
+        }
+      };
+
+      worker.postMessage({
+        type: "start",
+        parts,
+        durationSec,
+        otherVolume,
+        octaveShift,
+        uniformVelocity,
+        sampleRate: EXPORT_SAMPLE_RATE,
+        mp3Kbps: EXPORT_MP3_KBPS,
+        soundfontBuf,
+        zipBaseName
+      });
+    }
+
+    exportBtn.addEventListener("click", async () => {
+      try {
+        stopPreview();
+        // durationSec는 parts 생성 시 계산해 둠
+        const dur = (startExportZip._durationSec || 0);
+        if (!dur) return;
+        await startExportZip(dur);
+      } catch (e) {
+        log(`내보내기 실패: ${e.message || e}`);
+        exportBtn.disabled = false;
+        previewBtn.disabled = false;
+      }
+    });
+
+    // ====== MIDI 로드 ======
+    midiFileEl.addEventListener("change", async () => {
+      try {
+        stopPreview();
+        setStatus("불러오는 중...");
+        setProgressVisible(false);
+        setProgressBarVisible(false);
+        partsStrip.textContent = "불러오는 중...";
+        partsStrip.classList.add("loading");
+
+        const f = midiFileEl.files && midiFileEl.files[0];
+        if (!f) {
+          setProgressVisible(false);
+          setProgress(0);
+          setProgressBarVisible(true);
+          setStatus("");
+          partsStrip.textContent = "";
+          partsStrip.classList.remove("loading");
+          setMainVisible(false);
+          return;
+        }
+        setMainVisible(true);
+
+        log(`MIDI 로드: ${f.name}`);
+        const buf = await f.arrayBuffer();
+        const smf = parseSMF(buf);
+        const built = buildPartsFromSMF(smf);
+
+        parts = built.parts;
+        startExportZip._durationSec = built.durationSec;
+
+        if (!parts.length) {
+          log("성부(노트 트랙)를 찾지 못했습니다.");
+          setProgressVisible(false);
+          setProgress(0);
+          setProgressBarVisible(true);
+          setStatus("");
+          previewBtn.disabled = true;
+          exportBtn.disabled = true;
+          partsStrip.innerHTML = "";
+          partsStrip.classList.remove("loading");
+          return;
+        }
+
+        selectedPart = 0;
+        renderPartsUI();
+        partsStrip.classList.remove("loading");
+
+        // 사운드폰트/신스 프리로드 (미리듣기 지연 감소)
+        initPreviewSynth().catch(() => {});
+
+        previewBtn.disabled = false;
+        exportBtn.disabled = false;
+
+        setProgressVisible(false);
+        setProgress(0);
+        setProgressBarVisible(true);
+        setStatus("");
+        partsStrip.classList.remove("loading");
+        log(`성부: ${parts.length}개`);
+      } catch (e) {
+        log(`MIDI 파싱 실패: ${e.message || e}`);
+        setProgressVisible(false);
+        setProgress(0);
+        setProgressBarVisible(true);
+        setStatus("");
+        previewBtn.disabled = true;
+        exportBtn.disabled = true;
+        partsStrip.innerHTML = "";
+        partsStrip.classList.remove("loading");
+      }
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      if (!worker) return;
+      worker.terminate(); worker = null;
+      setStatus("");
+      setProgress(0);
+      setProgressVisible(false);
+      setCancelEnabled(false);
+      exportBtn.disabled = false;
+      previewBtn.disabled = false;
+      log("내보내기 취소");
+    });
+
+    // 초기: 사운드폰트 프리로드 시작(자동)
+    ensureSoundfontLoaded().catch(() => {});
+  </script>
+</body>
+</html>
